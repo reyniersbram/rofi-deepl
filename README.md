@@ -55,7 +55,7 @@ SRC_LANG_DEFAULT # Default source language
 TARGET_LANG_DEFAULT # Default target language
 ```
 
-> ![NOTE]
+> [!NOTE]
 > The base url for the free version of the API is https://api-free.deepl.com, 
 > for the pro edition https://api.deepl.com is used.
 
