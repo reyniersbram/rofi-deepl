@@ -1,0 +1,69 @@
+#!/usr/bin/env sh
+
+# shellcheck disable=SC1091
+
+set -e
+set -u
+
+# load config
+CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.conf}
+if [ -f "$CONFIG_HOME"/rofi-deepl/rofi-deepl.conf ] ; then
+    . "$CONFIG_HOME/rofi-deepl/rofi-deepl.conf"
+else
+    . "/etc/rofi-deepl.conf"
+fi
+
+# ensure data dir and history file exist
+mkdir -p "$ROFI_DEEPL_DATA_DIR"
+HIST_FILE="$ROFI_DEEPL_DATA_DIR/history"
+if [ ! -f "$HIST_FILE" ] ; then
+    touch "$HIST_FILE"
+fi
+
+# get history
+options=$(sort "$HIST_FILE" | uniq -c | sed 's/^\s*//' |sort -nr | tr -s ' ' | cut -d ' ' -f2-)
+
+# get user input as SRC:TARGET:INPUT
+args=$(rofi -dmenu -p "Translate" -sep '\n' << EOF
+$options
+EOF
+)
+src=$(echo "$args" | cut -s -d ':' -f1)
+src=${src:-$SRC_DEFAULT}
+target=$(echo "$args" | cut -s -d ':' -f2)
+target=${target:-$TARGET_DEFAULT}
+input=$(echo "$args" | cut -s -d ':' -f3)
+input_alt=$args
+input=${input:-$input_alt}
+
+# save to history
+echo "$src:$target:$input" >> "$HIST_FILE"
+
+# get translation from deepl api
+result=$(curl -X POST "$DEEPL_API_BASE/v2/translate" \
+    --header "Authorization: DeepL-Auth-Key $DEEPL_API_KEY" \
+    --header 'Content-Type: application/json' \
+    --data '{
+    "text":["'"$input"'"],
+    "source_lang":"'"$src"'",
+    "target_lang":"'"$target"'"
+    }' 2> /dev/null | jq -r '.translations[0].text')
+
+# no result
+if [ -z "$result" ] || [ "$result" = "null" ] ; then
+    notify-send \
+        --app-name "rofi-deepl" \
+        --urgency critical \
+        --icon /usr/share/pixmaps/rofi-deepl.png \
+        "DeepL" "No result"
+    exit 1
+fi
+
+# show result in notification
+notify-send \
+    --expire-time 5000 \
+    --app-name "rofi-deepl" \
+    --icon /usr/share/pixmaps/rofi-deepl.png \
+    "DeepL" "$result"
+# copy result to clipboard
+printf %s "$result" | xclip -selection clipboard
